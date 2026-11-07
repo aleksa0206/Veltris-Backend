@@ -122,3 +122,28 @@ export async function createWithWorkspace(
     select: userSafeSelect,
   });
 }
+
+/**
+ * Sign-up through an invitation: the account joins the invited workspace instead of getting one
+ * of its own. Guarded on the invitation still being open; returns null (nothing created) otherwise.
+ */
+export async function createWithInvitation(
+  data: { firstName: string; lastName: string; email: string; passwordHash: string },
+  invitation: { id: number; workspaceId: number; role: 'Owner' | 'Admin' | 'Member' }
+) {
+  return await prisma.$transaction(async (tx) => {
+    const now = new Date();
+    const result = await tx.invitation.updateMany({
+      where: { id: invitation.id, acceptedAt: null, expiresAt: { gt: now } },
+      data: { acceptedAt: now },
+    });
+    if (result.count !== 1) return null;
+    return await tx.user.create({
+      data: {
+        ...data,
+        memberships: { create: { workspaceId: invitation.workspaceId, role: invitation.role } },
+      },
+      select: userSafeSelect,
+    });
+  });
+}

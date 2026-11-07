@@ -57,3 +57,43 @@ export async function updateWorkspace(id: number, data: { name: string }) {
 export async function addMember(workspaceId: number, userId: number, role: WorkspaceRole) {
   return await prisma.workspaceMember.create({ data: { workspaceId, userId, role } });
 }
+
+export async function updateMemberRole(workspaceId: number, userId: number, role: WorkspaceRole) {
+  return await prisma.workspaceMember.update({
+    where: { workspaceId_userId: { workspaceId, userId } },
+    data: { role },
+  });
+}
+
+/**
+ * Removes a member. Their open tasks in the workspace become unassigned (with a history entry by
+ * `actorId`) and they stop leading projects, so nothing points at someone who can no longer act.
+ */
+export async function removeMember(workspaceId: number, userId: number, actorId: number) {
+  return await prisma.$transaction(async (tx) => {
+    const assigned = await tx.task.findMany({
+      where: {
+        assigneeId: userId,
+        status: { notIn: ['Done', 'Cancelled'] },
+        project: { workspaceId },
+      },
+      select: { id: true },
+    });
+    const taskIds = assigned.map((task) => task.id);
+    if (taskIds.length) {
+      await tx.task.updateMany({ where: { id: { in: taskIds } }, data: { assigneeId: null } });
+      await tx.taskActivity.createMany({
+        data: taskIds.map((taskId) => ({
+          taskId,
+          actorId,
+          type: 'AssigneeChanged' as const,
+          fromValue: String(userId),
+          toValue: null,
+        })),
+      });
+    }
+    await tx.project.updateMany({ where: { workspaceId, leadId: userId }, data: { leadId: null } });
+    await tx.workspaceMember.delete({ where: { workspaceId_userId: { workspaceId, userId } } });
+    return { unassignedTasks: taskIds.length };
+  });
+}

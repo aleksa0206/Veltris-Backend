@@ -7,6 +7,7 @@ export async function cleanDatabase() {
   await prisma.task.deleteMany({ where: { parentId: { not: null } } });
   await prisma.task.deleteMany();
   await prisma.project.deleteMany();
+  await prisma.invitation.deleteMany();
   await prisma.workspaceMember.deleteMany();
   await prisma.workspace.deleteMany();
   await prisma.refreshToken.deleteMany();

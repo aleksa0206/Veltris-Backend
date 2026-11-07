@@ -69,6 +69,7 @@ model User {
   reportedTasks Task[]            @relation("TaskReporter")
   comments      Comment[]
   activities    TaskActivity[]
+  invitations   Invitation[]
 }
 
 // The tenant. Every project, task and comment belongs to exactly one workspace, and every query
@@ -80,8 +81,9 @@ model Workspace {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members  WorkspaceMember[]
-  projects Project[]
+  members     WorkspaceMember[]
+  projects    Project[]
+  invitations Invitation[]
 }
 
 model WorkspaceMember {
@@ -96,6 +98,27 @@ model WorkspaceMember {
 
   @@id([workspaceId, userId])
   @@index([userId])
+}
+
+// An invitation for someone without an account. The link carries the raw token; only its hash is
+// stored. One open invitation per email and workspace: inviting again renews it.
+model Invitation {
+  id          Int           @id @default(autoincrement())
+  workspaceId Int
+  email       String
+  role        WorkspaceRole @default(Member)
+  tokenHash   String        @unique
+  invitedById Int
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  invitedBy User      @relation(fields: [invitedById], references: [id])
+
+  @@unique([workspaceId, email])
 }
 
 // `key` prefixes task identifiers (WEB-12); `nextTaskNumber` is bumped atomically on every new task.

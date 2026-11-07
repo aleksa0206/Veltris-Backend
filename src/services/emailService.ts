@@ -25,3 +25,30 @@ export async function sendPasswordResetEmail(to: string, resetToken: string) {
     `,
   });
 }
+
+export async function sendInvitationEmail(
+  to: string,
+  invitation: { workspaceName: string; inviterName: string; token: string }
+) {
+  const url = `${env.FRONTEND_URL}/invite?token=${invitation.token}`;
+
+  await transporter.sendMail({
+    from: env.SMTP_USER,
+    to,
+    subject: `${invitation.inviterName} invited you to ${invitation.workspaceName} - Veltris`,
+    html: `
+      <p>${escapeHtml(invitation.inviterName)} invited you to the workspace
+      <strong>${escapeHtml(invitation.workspaceName)}</strong> on Veltris.</p>
+      <p><a href="${url}">Accept the invitation</a></p>
+      <p>The link expires in 7 days.</p>
+    `,
+  });
+}
+
+// Workspace and person names are user input and end up in HTML.
+function escapeHtml(value: string): string {
+  return value.replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!
+  );
+}

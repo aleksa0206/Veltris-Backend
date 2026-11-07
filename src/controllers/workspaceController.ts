@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import * as workspaceService from '../services/workspaceService';
 import * as overviewService from '../services/overviewService';
+import * as invitationService from '../services/invitationService';
 import { todayUtc } from '../utils/dates';
 import { parseOptionalDateQuery } from '../utils/queryParams';
 
@@ -47,10 +48,69 @@ export async function getMembersHandler(req: Request, res: Response, next: NextF
   }
 }
 
-export async function addMemberHandler(req: Request, res: Response, next: NextFunction) {
+export async function inviteMemberHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const workspaceId = Number(req.params.workspaceId);
-    res.status(201).json(await workspaceService.addMember(workspaceId, req.body, req.user!.userId));
+    res
+      .status(201)
+      .json(await workspaceService.inviteMember(workspaceId, req.body, req.user!.userId));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function changeRoleHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const workspaceId = Number(req.params.workspaceId);
+    const memberId = Number(req.params.userId);
+    res.json(
+      await workspaceService.changeRole(workspaceId, memberId, req.body.role, req.user!.userId)
+    );
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function removeMemberHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const workspaceId = Number(req.params.workspaceId);
+    const memberId = Number(req.params.userId);
+    res.json(await workspaceService.removeMember(workspaceId, memberId, req.user!.userId));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getInvitationsHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const workspaceId = Number(req.params.workspaceId);
+    res.json(await workspaceService.getInvitations(workspaceId, req.user!.userId));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function revokeInvitationHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const workspaceId = Number(req.params.workspaceId);
+    const invitationId = Number(req.params.invitationId);
+    res.json(await workspaceService.revokeInvitation(workspaceId, invitationId, req.user!.userId));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function previewInvitationHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    res.json(await invitationService.preview(req.body.token));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function acceptInvitationHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    res.json(await invitationService.accept(req.body.token, req.user!.userId));
   } catch (err) {
     next(err);
   }

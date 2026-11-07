@@ -9,9 +9,12 @@ import { UnauthorizedError } from '../errors/UnauthorizedError';
 import { ConflictError } from '../errors/ConflictError';
 import { LockedError } from '../errors/LockedError';
 import { TwoFactorRequiredError } from '../errors/TwoFactorRequiredError';
+import { ValidationError } from '../errors/ValidationError';
+import * as invitationService from './invitationService';
 import { getContainer } from '../container';
 import { logger } from '../config/logger';
 import { env } from '../config/env';
+import { generateToken, hashToken } from '../utils/tokens';
 
 const totp = new TOTP({
   crypto: new NobleCryptoPlugin(),
@@ -24,10 +27,6 @@ const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_FAILED_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
 const TEMP_TOKEN_TTL = '5m';
-
-function hashToken(token: string) {
-  return crypto.createHash('sha256').update(token).digest('hex');
-}
 
 function generateRefreshToken() {
   return crypto.randomBytes(40).toString('hex');
@@ -110,16 +109,43 @@ export async function register(input: {
   email: string;
   password: string;
   workspaceName?: string | undefined;
+  /** Signing up from an invitation link joins that workspace instead of creating one. */
+  invitationToken?: string | undefined;
 }) {
   if (await userRepository.findUserByEmail(input.email)) {
     throw new ConflictError('An account with this email already exists');
   }
 
   const passwordHash = await bcrypt.hash(input.password, 10);
-  const user = await userRepository.createWithWorkspace(
-    { firstName: input.firstName, lastName: input.lastName, email: input.email, passwordHash },
-    input.workspaceName ?? `${input.firstName}'s workspace`
-  );
+  const data = {
+    firstName: input.firstName,
+    lastName: input.lastName,
+    email: input.email,
+    passwordHash,
+  };
+
+  let user;
+  if (input.invitationToken) {
+    const { invitation, status } = await invitationService.findByToken(input.invitationToken);
+    if (status !== 'open') {
+      throw new ConflictError('This invitation is no longer valid');
+    }
+    // The link proves access to the invited mailbox, not to any other address.
+    if (!invitationService.sameEmail(invitation.email, input.email)) {
+      throw new ValidationError('email: must be the address the invitation was sent to', [
+        { path: 'email', message: 'must be the address the invitation was sent to' },
+      ]);
+    }
+    user = await userRepository.createWithInvitation(data, invitation);
+    if (!user) {
+      throw new ConflictError('This invitation is no longer valid');
+    }
+  } else {
+    user = await userRepository.createWithWorkspace(
+      data,
+      input.workspaceName ?? `${input.firstName}'s workspace`
+    );
+  }
 
   const { accessToken, refreshToken } = await issueTokensForUser(user);
 
@@ -256,7 +282,7 @@ export async function requestPasswordReset(email: string) {
     return;
   }
 
-  const rawToken = crypto.randomBytes(32).toString('hex');
+  const rawToken = generateToken();
   const tokenHash = hashToken(rawToken);
   const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MS);
 

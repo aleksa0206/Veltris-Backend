@@ -76,7 +76,13 @@ describe('Workspaces', () => {
       .set('Authorization', bearer(owner))
       .send({ email: 'new@test.com', role: 'Admin' });
     expect(added.status).toBe(201);
-    expect(added.body).toContainEqual(expect.objectContaining({ id: newcomer.id, role: 'Admin' }));
+    expect(added.body).toEqual({ outcome: 'added' });
+    const members = await request(app)
+      .get(`/workspaces/${workspace.id}/members`)
+      .set('Authorization', bearer(owner));
+    expect(members.body).toContainEqual(
+      expect.objectContaining({ id: newcomer.id, role: 'Admin' })
+    );
 
     const again = await request(app)
       .post(`/workspaces/${workspace.id}/members`)
