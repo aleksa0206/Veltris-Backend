@@ -1,0 +1,213 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum WorkspaceRole {
+  Owner
+  Admin
+  Member
+}
+
+enum ProjectStatus {
+  Active
+  OnHold
+  Completed
+  Archived
+}
+
+enum TaskStatus {
+  Backlog
+  Todo
+  InProgress
+  InReview
+  Done
+  Cancelled
+}
+
+enum TaskPriority {
+  None
+  Low
+  Medium
+  High
+  Urgent
+}
+
+enum ActivityType {
+  Created
+  TitleChanged
+  StatusChanged
+  PriorityChanged
+  AssigneeChanged
+  DueDateChanged
+  Commented
+}
+
+model User {
+  id                     Int       @id @default(autoincrement())
+  failedLoginAttempts    Int       @default(0)
+  firstName              String
+  lastName               String
+  email                  String    @unique
+  passwordHash           String
+  twoFactorSecret        String?
+  resetPasswordTokenHash String?
+  resetPasswordExpiresAt DateTime?
+  lockedUntil            DateTime?
+  twoFactorEnabled       Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  refreshTokens RefreshToken[]
+  memberships   WorkspaceMember[]
+  ledProjects   Project[]         @relation("ProjectLead")
+  assignedTasks Task[]            @relation("TaskAssignee")
+  reportedTasks Task[]            @relation("TaskReporter")
+  comments      Comment[]
+  activities    TaskActivity[]
+}
+
+// The tenant. Every project, task and comment belongs to exactly one workspace, and every query
+// is scoped through the caller's membership.
+model Workspace {
+  id   Int    @id @default(autoincrement())
+  name String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members  WorkspaceMember[]
+  projects Project[]
+}
+
+model WorkspaceMember {
+  workspaceId Int
+  userId      Int
+  role        WorkspaceRole @default(Member)
+
+  createdAt DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@id([workspaceId, userId])
+  @@index([userId])
+}
+
+// `key` prefixes task identifiers (WEB-12); `nextTaskNumber` is bumped atomically on every new task.
+model Project {
+  id             Int           @id @default(autoincrement())
+  workspaceId    Int
+  key            String        @db.VarChar(10)
+  name           String
+  description    String?       @db.Text
+  status         ProjectStatus @default(Active)
+  leadId         Int?
+  startDate      DateTime?
+  targetDate     DateTime?
+  nextTaskNumber Int           @default(1)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id])
+  lead      User?     @relation("ProjectLead", fields: [leadId], references: [id])
+  tasks     Task[]
+
+  @@unique([workspaceId, key])
+  @@index([workspaceId, status])
+}
+
+// `position` orders tasks inside a board column (ascending). `parentId` makes a subtask; subtasks
+// stay in their parent's project and are not board cards.
+model Task {
+  id          Int          @id @default(autoincrement())
+  projectId   Int
+  number      Int
+  parentId    Int?
+  title       String
+  description String?      @db.Text
+  status      TaskStatus   @default(Todo)
+  priority    TaskPriority @default(None)
+  assigneeId  Int?
+  reporterId  Int
+  dueDate     DateTime?
+  position    Float
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project    Project        @relation(fields: [projectId], references: [id])
+  parent     Task?          @relation("Subtasks", fields: [parentId], references: [id])
+  subtasks   Task[]         @relation("Subtasks")
+  assignee   User?          @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  reporter   User           @relation("TaskReporter", fields: [reporterId], references: [id])
+  comments   Comment[]
+  activities TaskActivity[]
+
+  @@unique([projectId, number])
+  @@index([projectId, status, position])
+  @@index([assigneeId, status])
+  @@index([parentId])
+}
+
+model Comment {
+  id       Int    @id @default(autoincrement())
+  taskId   Int
+  authorId Int
+  body     String @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  task   Task @relation(fields: [taskId], references: [id])
+  author User @relation(fields: [authorId], references: [id])
+
+  @@index([taskId, createdAt])
+}
+
+// Append-only history of a task. `fromValue`/`toValue` hold raw values (enum names, user ids,
+// YYYY-MM-DD, titles); the client renders them.
+model TaskActivity {
+  id        Int          @id @default(autoincrement())
+  taskId    Int
+  actorId   Int
+  type      ActivityType
+  fromValue String?      @db.Text
+  toValue   String?      @db.Text
+
+  createdAt DateTime @default(now())
+
+  task  Task @relation(fields: [taskId], references: [id])
+  actor User @relation(fields: [actorId], references: [id])
+
+  @@index([taskId, createdAt])
+  @@index([createdAt])
+}
+
+model RefreshToken {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  token     String   @unique
+  revoked   Boolean  @default(false)
+  expiresAt DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+model RateLimitEntry {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
+  count     Int      @default(1)
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}
