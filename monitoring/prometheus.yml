@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: veltris-api
+    metrics_path: /metrics
+    # Local dev token only; must match METRICS_TOKEN in .env.
+    authorization:
+      credentials: dev-metrics-token-local
+    static_configs:
+      - targets: ['host.docker.internal:4000']
