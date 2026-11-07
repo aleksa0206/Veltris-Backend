@@ -1,0 +1,59 @@
+import { Prisma, WorkspaceRole } from '@prisma/client';
+import { prisma } from '../config/prismaClient';
+import { userRefSelect } from './userRepository';
+
+export async function findWorkspaceById(id: number) {
+  return await prisma.workspace.findUnique({ where: { id } });
+}
+
+export async function findMembership(workspaceId: number, userId: number) {
+  return await prisma.workspaceMember.findUnique({
+    where: { workspaceId_userId: { workspaceId, userId } },
+  });
+}
+
+/** The caller's workspaces with their role, oldest membership first. */
+export async function findWorkspacesForUser(userId: number) {
+  const rows = await prisma.workspaceMember.findMany({
+    where: { userId },
+    include: { workspace: { include: { _count: { select: { members: true } } } } },
+    orderBy: [{ createdAt: 'asc' }, { workspaceId: 'asc' }],
+  });
+  return rows.map(({ role, workspace: { _count, ...workspace } }) => ({
+    ...workspace,
+    role,
+    memberCount: _count.members,
+  }));
+}
+
+export async function findMembers(workspaceId: number) {
+  const rows = await prisma.workspaceMember.findMany({
+    where: { workspaceId },
+    include: { user: { select: { ...userRefSelect, email: true } } },
+    orderBy: [{ user: { firstName: 'asc' } }, { userId: 'asc' }],
+  });
+  return rows.map(({ role, user }) => ({ ...user, role }));
+}
+
+/** How many of `userIds` are members of the workspace. */
+export async function countMembers(workspaceId: number, userIds: number[]) {
+  return await prisma.workspaceMember.count({ where: { workspaceId, userId: { in: userIds } } });
+}
+
+export async function createWorkspace(
+  name: string,
+  ownerId: number,
+  tx: Prisma.TransactionClient = prisma
+) {
+  return await tx.workspace.create({
+    data: { name, members: { create: { userId: ownerId, role: 'Owner' } } },
+  });
+}
+
+export async function updateWorkspace(id: number, data: { name: string }) {
+  return await prisma.workspace.update({ where: { id }, data });
+}
+
+export async function addMember(workspaceId: number, userId: number, role: WorkspaceRole) {
+  return await prisma.workspaceMember.create({ data: { workspaceId, userId, role } });
+}
