@@ -4,6 +4,7 @@
 
 REST API for Veltris, a project management tool for teams. Work is organised in workspaces; each workspace has members with roles, projects with a short key, and tasks that move across a board. Every workspace is an isolated tenant in the same database.
 
+- Live: [veltris.stackvale.space](https://veltris.stackvale.space)
 - Frontend: [Veltris-Frontend](https://github.com/aleksa0206/Veltris-Frontend) (Angular)
 
 ## Features
