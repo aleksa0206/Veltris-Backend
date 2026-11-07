@@ -1,0 +1,13 @@
+node_modules/
+.env
+
+/src/generated/prisma
+.agents
+.claude
+PROJECT_CONTEXT.md
+.windsurf
+dist/
+.claudeignore
+docs
+.env.test
+.env.production

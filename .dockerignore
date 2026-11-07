@@ -1,0 +1,8 @@
+node_modules
+dist
+.env
+.env.test
+.env.production
+.git*.zip
+.claude
+tests
