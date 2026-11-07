@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer';
 import { env } from '../config/env';
+import { logger } from '../config/logger';
 
 const transporter = nodemailer.createTransport({
   host: env.SMTP_HOST,
@@ -11,12 +12,23 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+// Local development usually has no mail server (SMTP_USER is required only in production): the
+// message is logged instead, so reset and invitation links can still be followed.
+async function send(message: { to: string; subject: string; html: string; link: string }) {
+  const { link, ...mail } = message;
+  if (env.NODE_ENV !== 'production' && !env.SMTP_USER) {
+    logger.info({ to: mail.to, link }, `Email not sent (no SMTP configured): ${mail.subject}`);
+    return;
+  }
+  await transporter.sendMail({ from: env.SMTP_USER, ...mail });
+}
+
 export async function sendPasswordResetEmail(to: string, resetToken: string) {
   const resetUrl = `${env.FRONTEND_URL}/reset-password?token=${resetToken}`;
 
-  await transporter.sendMail({
-    from: env.SMTP_USER,
+  await send({
     to,
+    link: resetUrl,
     subject: 'Password reset - Veltris',
     html: `
       <p>We received a request to reset your password.</p>
@@ -32,9 +44,9 @@ export async function sendInvitationEmail(
 ) {
   const url = `${env.FRONTEND_URL}/invite?token=${invitation.token}`;
 
-  await transporter.sendMail({
-    from: env.SMTP_USER,
+  await send({
     to,
+    link: url,
     subject: `${invitation.inviterName} invited you to ${invitation.workspaceName} - Veltris`,
     html: `
       <p>${escapeHtml(invitation.inviterName)} invited you to the workspace

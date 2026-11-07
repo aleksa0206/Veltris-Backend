@@ -8,7 +8,8 @@ REST API for Veltris, a project management tool for teams: workspaces with membe
 
 ## Features
 
-- **Workspaces** — the unit of collaboration. Signing up creates your first workspace; owners and admins add existing accounts as admins or members. Everything below belongs to exactly one workspace.
+- **Workspaces** — the unit of collaboration. Signing up creates your first workspace. Everything below belongs to exactly one workspace.
+- **Members and invitations** — owners and admins invite by email: an existing account joins at once, anyone else gets a link valid for 7 days (inviting again renews it; pending invitations can be revoked). Signing up from the link joins that workspace instead of creating one. Roles are Owner, Admin and Member; admins change roles and remove members, anyone but the owner can leave. A removed member's open tasks are unassigned (with a history entry) and they stop leading projects.
 - **Projects** — key (`WEB`), name, description, status (active, on hold, completed, archived), lead, start and target date. Lists come with task counts per project: total, done, open and overdue.
 - **Tasks** — numbered per project (`WEB-12`), with status (backlog, to do, in progress, in review, done, cancelled), priority (none to urgent), assignee, due date and description. Search by title or by identifier.
 - **Board** — tasks keep their order inside a column; a drag and drop is a single request that places the card above another one, or at the bottom.
@@ -23,6 +24,7 @@ REST API for Veltris, a project management tool for teams: workspaces with membe
 - Account lockout after 5 failed logins, timing-safe login (no account enumeration), hashed and expiring password-reset tokens.
 - DB-backed rate limiting, so limits hold across instances.
 - Every request is checked against the caller's workspace membership and role; assignees and project leads must be members of the same workspace.
+- Invitation links carry a random token; only its SHA-256 hash is stored. A link can be used once, before it expires, and only by an account with the invited email address. Without SMTP in development, emails are written to the log instead.
 - Environment variables are validated at startup.
 
 ## Tech stack
@@ -66,7 +68,9 @@ Or create an account with `POST /auth/register` (or through the frontend at `/re
 | --- | --- |
 | Auth | `POST /auth/register` (with optional `workspaceName`), `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/forgot-password`, `/auth/reset-password`, `GET /auth/me`, 2FA under `/auth/2fa/*` |
 | Profile | `PUT /users/me` |
-| Workspaces | `GET/POST /workspaces`, `GET/PUT /workspaces/:id`, `GET/POST /workspaces/:id/members`, `GET /workspaces/:id/overview?today` |
+| Workspaces | `GET/POST /workspaces`, `GET/PUT /workspaces/:id`, `GET /workspaces/:id/overview?today` |
+| Members | `GET/POST /workspaces/:id/members` (POST invites by email), `PUT/DELETE /workspaces/:id/members/:userId` |
+| Invitations | `GET /workspaces/:id/invitations`, `DELETE /workspaces/:id/invitations/:invitationId`, `POST /invitations/preview`, `POST /invitations/accept`; `POST /auth/register` takes an optional `invitationToken` |
 | Projects | `GET /workspaces/:id/projects?status&search&sort=name\|targetDate\|updated&today`, `POST /workspaces/:id/projects`, `GET/PUT/DELETE /projects/:id` |
 | Tasks | `GET /projects/:id/tasks`, `GET /workspaces/:id/tasks` (`?status&priority&assigneeId=me\|none\|id&open&topLevel&search&sort=board\|due\|priority\|updated`), `POST /projects/:id/tasks`, `GET/PUT/DELETE /tasks/:id`, `POST /tasks/:id/move` |
 | Comments | `GET/POST /tasks/:id/comments`, `PUT/DELETE /comments/:id` |
@@ -84,7 +88,7 @@ npm run test:migrate   # after every new migration
 npm test
 ```
 
-They cover access by role and membership, task numbering, the change log, board ordering (including renumbering a full gap), subtasks, comment moderation, identifier search and the overview counts.
+They cover access by role and membership, invitations (sign-up through a link, wrong address, reuse, expiry, renewal), member removal, task numbering, the change log, board ordering (including renumbering a full gap), subtasks, comment moderation, identifier search and the overview counts.
 
 CI (GitHub Actions) runs formatting, type checking and the full test suite against MySQL 8, and builds the Docker image.
 
